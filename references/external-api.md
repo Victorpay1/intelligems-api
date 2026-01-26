@@ -491,6 +491,6 @@ Slack message includes:
 ## Working Examples
 
 **Segment Winner Analysis Tool:**
-`02 - Areas/Intelligems/Claude Code Projects/intelligems-segment-analysis/`
+See the [intelligems-segment-analysis skill](https://github.com/Victorpay1/intelligems-segment-analysis) for a working example.
 
 Shows which segments (device, visitor type, traffic source) each active experiment is winning in. Demonstrates audience view API usage, segment extraction, and winner determination logic.
