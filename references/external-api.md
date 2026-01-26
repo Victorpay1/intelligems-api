@@ -154,6 +154,18 @@ Each item in `metrics` represents one variation with metric names as keys:
 - `p2bc` - Probability to Beat Control
 - `ci_low`, `ci_high` - Confidence interval bounds
 
+**Important: `p2bb` Returns `null` for Low-Data Segments**
+
+The API returns `p2bb: null` (not 0, literally null) when there's insufficient data to calculate statistical significance. This typically happens when:
+- Segment has fewer than ~10-15 orders per variation
+- Not enough conversions to compute confidence intervals
+
+Example from real data:
+- Paid Search: 4,431 visitors, 49 orders → `p2bb: 0.86` ✓
+- Paid Social: 631 visitors, 5 orders → `p2bb: null` (insufficient data)
+
+**Best Practice:** Always display `n_visitors` and `n_orders` alongside confidence so users understand WHY confidence may be unavailable. Show "Low data" or similar instead of "-" when `p2bb` is null.
+
 **Available Metrics:**
 
 *Core Metrics:*
@@ -191,6 +203,74 @@ Each item in `metrics` represents one variation with metric names as keys:
 - `subscription_net_revenue` - Subscription revenue
 - `subscription_gross_profit` - Subscription profit
 - `pct_subscription_orders` - % of orders that are subscriptions
+
+---
+
+### Audience View Response Structure
+
+When using `view=audience` with an `audience` parameter, the response structure changes:
+
+- `datasetId` becomes `"variation_audience"` (not `"variation_overview"`)
+- Each item in `metrics` includes an **`audience` field** containing the segment value
+
+**Critical:** The segment value is ALWAYS in the `audience` field, NOT in a field named after the segment type.
+
+```json
+{
+  "datasetId": "variation_audience",
+  "metrics": [
+    {
+      "variation_id": "uuid-of-variation",
+      "audience": "Desktop",
+      "n_visitors": {"value": 1500},
+      "net_revenue_per_visitor": {
+        "value": 2.45,
+        "uplift": {"value": 0.12},
+        "p2bb": 0.82
+      }
+    },
+    {
+      "variation_id": "uuid-of-variation",
+      "audience": "Mobile",
+      "n_visitors": {"value": 3200},
+      "net_revenue_per_visitor": {...}
+    }
+  ]
+}
+```
+
+**Available Segment Values:**
+
+| Segment Type | Possible Values |
+|--------------|-----------------|
+| `device_type` | Desktop, Mobile, Tablet |
+| `visitor_type` | New, Returning |
+| `source_channel` | Paid Search, Paid Social, Paid Shopping, Direct, Organic Search, Organic Social, Email, Other, Paid Other |
+| `country_code` | US, CA, GB, etc. (ISO country codes) |
+
+**Python Example - Extracting Segment Data:**
+
+```python
+def get_segment_analytics(self, experience_id: str, segment_type: str) -> Dict:
+    """Fetch analytics segmented by audience type."""
+    url = f"{API_BASE}/analytics/resource/{experience_id}"
+    params = {"view": "audience", "audience": segment_type}
+    response = requests.get(url, headers=self.headers, params=params)
+    response.raise_for_status()
+    return response.json()
+
+# Usage
+data = api.get_segment_analytics(exp_id, "device_type")
+metrics = data.get("metrics", [])
+
+# Group by segment value (use "audience" field, not segment_type)
+segments = {}
+for metric in metrics:
+    seg_value = metric.get("audience")  # e.g., "Desktop", "Mobile"
+    if seg_value not in segments:
+        segments[seg_value] = []
+    segments[seg_value].append(metric)
+```
 
 ---
 
@@ -405,3 +485,12 @@ Slack message includes:
 - [JavaScript API](https://docs.intelligems.io/developer-resources/javascript-api)
 - [MCP Server](https://docs.intelligems.io/developer-resources/mcp-server)
 - [Webhook Integration](https://docs.intelligems.io/integrations/webhook-integration)
+
+---
+
+## Working Examples
+
+**Segment Winner Analysis Tool:**
+`02 - Areas/Intelligems/Claude Code Projects/intelligems-segment-analysis/`
+
+Shows which segments (device, visitor type, traffic source) each active experiment is winning in. Demonstrates audience view API usage, segment extraction, and winner determination logic.
