@@ -106,8 +106,42 @@ Access analytics data for an experience with customizable date ranges and audien
 |-----------|------|-------------|
 | view | string | `overview` (default) or `audience` |
 | audience | string | Segment by: `device_type`, `visitor_type`, `source_channel`, `source_site`, `country_code`, `landing_page_full_path` |
-| start | string | Start date for date range |
-| end | string | End date for date range |
+| start | integer | **Unix timestamp in seconds (10-digit integer)** - Start of date range |
+| end | integer | **Unix timestamp in seconds (10-digit integer)** - End of date range |
+
+**IMPORTANT: Date Range Format**
+
+The `start` and `end` parameters MUST be **Unix timestamps in seconds** (10-digit integers), NOT date strings.
+
+```python
+from datetime import datetime, timezone
+
+# Correct - Unix timestamp in seconds
+jan_20 = datetime(2026, 1, 20, 0, 0, 0, tzinfo=timezone.utc)
+start_ts = int(jan_20.timestamp())  # 1737331200
+
+# Wrong - these will return 400 Bad Request
+# start = "2026-01-20"           # Date string
+# start = "2026-01-20T00:00:00Z" # ISO format
+# start = 1737331200000          # Milliseconds (13 digits)
+```
+
+**Helper function for date ranges:**
+```python
+def date_to_unix_range(date) -> tuple:
+    """Convert a date to Unix timestamp range (start of day, end of day)."""
+    from datetime import datetime
+
+    # Start of day (00:00:00)
+    start_dt = datetime.combine(date, datetime.min.time())
+    start_ts = int(start_dt.timestamp())
+
+    # End of day (23:59:59)
+    end_dt = datetime.combine(date, datetime.max.time().replace(microsecond=0))
+    end_ts = int(end_dt.timestamp())
+
+    return start_ts, end_ts
+```
 
 **Response:** Returns:
 - `datasetId` - "variation_overview"
@@ -480,6 +514,45 @@ Slack message includes:
 
 ---
 
+## Rate Limiting
+
+The API has aggressive rate limiting:
+
+- **~4 requests** before hitting rate limit
+- **25-60 second cooldown** when rate limited (429 response)
+- Rate limit applies across all endpoints
+
+**Best Practices:**
+```python
+import time
+
+REQUEST_DELAY = 1.0  # Minimum 1 second between requests
+MAX_RETRIES = 5
+RETRY_DELAY = 5  # Base delay, increases exponentially
+
+def fetch_with_retry(api_call, *args, **kwargs):
+    """Execute API call with retry logic for rate limits."""
+    for attempt in range(MAX_RETRIES):
+        try:
+            time.sleep(REQUEST_DELAY)
+            return api_call(*args, **kwargs)
+        except requests.HTTPError as e:
+            if e.response.status_code == 429:
+                wait_time = RETRY_DELAY * (2 ** attempt)
+                print(f"Rate limited, waiting {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            raise
+    return {}
+```
+
+**For batch operations** (like day-by-day analysis):
+- Expect ~2-3 minutes for 24 days of data
+- Consider caching results locally
+- Use weekly batches instead of daily to reduce calls
+
+---
+
 ## Related Documentation
 
 - [JavaScript API](https://docs.intelligems.io/developer-resources/javascript-api)
@@ -494,3 +567,16 @@ Slack message includes:
 See the [intelligems-segment-analysis skill](https://github.com/Victorpay1/intelligems-segment-analysis) for a working example.
 
 Shows which segments (device, visitor type, traffic source) each active experiment is winning in. Demonstrates audience view API usage, segment extraction, and winner determination logic.
+
+**Temporal Analysis Tool:**
+Location: `02 - Areas/Intelligems/Claude Code Projects/intelligems-temporal-analysis/`
+
+Analyzes day-by-day A/B test performance to identify:
+- Days the variant underperformed
+- Weekend vs weekday patterns
+- Traffic source correlations
+
+Demonstrates:
+- Date range filtering with Unix timestamps
+- Rate limit handling with exponential backoff
+- Building time-series data from multiple API calls
