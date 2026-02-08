@@ -68,12 +68,34 @@ Retrieve a list of all experiences with optional filtering.
 - `name` - Experience name
 - `status` - Current status
 - `category` - experiment or personalization
-- `type` - content/advanced, pricing, shipping, etc.
-- `startedAtTs` - Timestamp in milliseconds when test started (for runtime calculation)
+- `type` - content/advanced, content/template, pricing, shipping, etc.
 - `variations` - Array of variation configurations
 - `audience` - Targeting rules with `filterType`, `expression`, `action`
-- `testTypes` - Object with boolean flags: `hasTestPricing`, `hasTestShipping`, `hasTestCampaign`, `hasTestContent`
+- `testTypes` - Object with boolean flags (see below)
 - `organizationId` - UUID of the organization
+
+**Timestamp Fields (all in milliseconds):**
+- `startedAtTs` - When the test started
+- `endedAtTs` - When the test ended (null if active)
+- `pausedAtTs` - When paused (null if not paused)
+- `createdAtTs` - When created
+- `lastUpdateTs` - Last modification
+- `archivedAtTs` - When archived (null if not)
+
+**testTypes Flags:**
+
+The `testTypes` object contains boolean flags. Content tests have multiple sub-types — check all `hasTestContent*` flags:
+- `hasTestPricing` - Price test
+- `hasTestShipping` - Shipping test
+- `hasTestCampaign` - Offer/campaign test
+- `hasTestContent` - Basic content test
+- `hasTestContentAdvanced` - Advanced content test
+- `hasTestContentTemplate` - Template test (theme alternate templates)
+- `hasTestContentOnsite` - Onsite edit test
+- `hasTestContentUrl` - URL redirect test
+- `hasTestContentTheme` - Theme test
+- `hasTestCheckoutBlocks` - Checkout block test
+- `hasTestOnsiteInjections` - Onsite injection test
 
 ---
 
@@ -86,8 +108,23 @@ Get complete details for a specific experience.
 |-----------|------|-------------|
 | experienceId | UUID | The experience ID |
 
-**Response:** Returns full `experience` object including:
-- All base experience properties
+**Response:** Returns the experience wrapped in an `experience` key:
+
+```json
+{
+  "experience": {
+    "id": "uuid",
+    "name": "Test Name",
+    "status": "started",
+    ...
+  }
+}
+```
+
+**Important:** This is different from the list endpoint (which uses `experiencesList`). Extract with: `data.get("experience", data)`
+
+The experience object includes:
+- All base experience properties (same as list endpoint, plus full detail)
 - `variations` with full configuration (price changes, onsite edits, offers, redirects)
 - `audience` targeting rules
 - `experienceIntegrations` - Connected third-party integrations
@@ -312,6 +349,7 @@ for metric in metrics:
 
 ### Experience Types
 - `content/advanced` - Content tests
+- `content/template` - Template tests (theme alternate templates)
 - `content/onsiteEdits` - Onsite edit tests
 - `content/url` - URL redirect tests
 - `pricing` - Price tests
@@ -319,6 +357,8 @@ for metric in metrics:
 - `personalization` - Personalizations
 - `personalization/offer` - Offer experiences
 - `checkoutBlock` - Checkout block tests
+
+**Note:** Use the `testTypes` flags (not the `type` field) for reliable test type detection. The `type` field has many variants, while `testTypes` flags are consistent booleans.
 
 ### Variation Properties
 - `isControl` - Whether this is the baseline
@@ -523,28 +563,47 @@ The API has aggressive rate limiting:
 - Rate limit applies across all endpoints
 
 **Best Practices:**
+
+A built-in throttle (1 second minimum between requests) prevents most rate limits. Combined with exponential backoff for 429 responses, this handles all normal usage:
+
 ```python
 import time
 
-REQUEST_DELAY = 1.0  # Minimum 1 second between requests
+REQUEST_DELAY = 1.0  # Minimum 1 second between requests — prevents most 429s
 MAX_RETRIES = 5
-RETRY_DELAY = 5  # Base delay, increases exponentially
+RETRY_DELAY = 5  # Base delay in seconds, doubles each retry (5, 10, 20, 40, 80)
 
-def fetch_with_retry(api_call, *args, **kwargs):
-    """Execute API call with retry logic for rate limits."""
-    for attempt in range(MAX_RETRIES):
-        try:
-            time.sleep(REQUEST_DELAY)
-            return api_call(*args, **kwargs)
-        except requests.HTTPError as e:
-            if e.response.status_code == 429:
-                wait_time = RETRY_DELAY * (2 ** attempt)
-                print(f"Rate limited, waiting {wait_time}s...")
-                time.sleep(wait_time)
-                continue
-            raise
-    return {}
+class IntelligemsAPI:
+    def __init__(self, api_key):
+        self._last_request_time = 0
+        # ...
+
+    def _throttle(self):
+        """Enforce minimum delay between requests."""
+        elapsed = time.time() - self._last_request_time
+        if elapsed < REQUEST_DELAY:
+            time.sleep(REQUEST_DELAY - elapsed)
+        self._last_request_time = time.time()
+
+    def _request(self, url, params=None):
+        """Make a GET request with retry logic for rate limits."""
+        for attempt in range(MAX_RETRIES):
+            self._throttle()
+            try:
+                response = requests.get(url, headers=self.headers, params=params)
+                response.raise_for_status()
+                return response.json()
+            except requests.HTTPError as e:
+                if e.response.status_code == 429:
+                    wait_time = RETRY_DELAY * (2 ** attempt)
+                    print(f"Rate limited, waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                raise
+        return {}
 ```
+
+**Tested throughput:** This pattern handles ~15 sequential requests reliably, including segment-heavy queries that trigger 2-3 rate limit retries.
 
 **For batch operations** (like day-by-day analysis):
 - Expect ~2-3 minutes for 24 days of data
