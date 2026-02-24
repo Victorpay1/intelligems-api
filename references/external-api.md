@@ -277,6 +277,140 @@ Example from real data:
 
 ---
 
+### Chart Images (Server-Side Rendered)
+
+The analytics endpoint can generate bar chart images server-side. Charts are **opt-in** — you must request them via query parameters.
+
+**Additional Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| graphs | string | Comma-separated metric keys to generate charts for |
+| graphOutput | string | `png` (default, returns S3 URL) or `base64` (returns inline data) |
+
+**Important:** `graphs` only works with `view=overview`. Not supported with `view=audience`.
+
+**Example request:**
+```
+GET /v25-10-beta/analytics/resource/{id}?view=overview&graphs=conversion_rate,net_revenue_per_visitor,net_revenue_per_order&graphOutput=png
+```
+
+**Response — `graphs` array:**
+
+```json
+{
+  "graphs": [
+    {
+      "id": "75d78dcf-c5fe-4dc3-974f-e2c109202e0a",
+      "key": "conversion_rate",
+      "url": "https://static.intelligems.io/graphs/75d78dcf-....png",
+      "type": "bar",
+      "title": "Conversion Rate"
+    },
+    {
+      "id": "d3861bae-a626-4b6e-8d93-4e3538ddabec",
+      "key": "net_revenue_per_order",
+      "url": "https://static.intelligems.io/graphs/d3861bae-....png",
+      "type": "stackedBar",
+      "title": "Average Order Value"
+    }
+  ]
+}
+```
+
+**Graph object fields:**
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique graph UUID |
+| `key` | Metric key (matches the `graphs` param value) |
+| `url` | Public S3 URL to PNG image (when `graphOutput=png`) |
+| `data` | Base64-encoded PNG data (when `graphOutput=base64`) |
+| `type` | `bar` or `stackedBar` |
+| `title` | Human-readable title (e.g., "Conversion Rate", "Revenue per Visitor") |
+
+**Chart characteristics:**
+- Format: PNG (RGBA), 640x640 pixels, ~40 KB
+- Content: Variation bars with inline values, uplift %, confidence interval range, estimated monthly impact
+- `stackedBar` type (used for AOV) includes a legend row
+- Intelligems branding in bottom-right corner
+
+**URL accessibility:**
+- **Public** — no auth header needed to fetch the image
+- Hosted on `static.intelligems.io` (S3 + Cloudflare CDN, 5-min cache)
+- URLs use the graph `id` as filename: `https://static.intelligems.io/graphs/{id}.png`
+- New URLs generated on each API call (not permanent/cached across calls)
+
+**Available graph IDs (27 metrics):**
+
+*Core:* `conversion_rate`, `net_revenue_per_visitor`, `net_revenue_per_order`, `profit_per_visitor`, `profit_per_order`
+
+*Funnel:* `add_to_cart_rate`, `abandoned_cart_rate`, `abandoned_checkout_rate`, `checkout_begin_rate`, `checkout_enter_contact_info_rate`, `checkout_address_submitted_rate`, `view_product_page_rate`, `view_collection_page_rate`
+
+*Revenue:* `net_product_revenue_per_order`, `net_shipping_revenue_per_order`, `avg_discount_per_all_orders`, `avg_discount_per_discounted_order`, `avg_product_revenue_per_unit`, `avg_units_per_order`, `pct_orders_free_shipping`
+
+*Subscription:* `pct_subscription_orders`, `subscription_orders_per_visitor`, `subscription_revenue_per_order`, `subscription_revenue_per_visitor`, `subscription_product_revenue_per_order`, `subscription_profit_per_visitor`
+
+**Python helper:**
+
+```python
+def get_chart_images(analytics_response: dict) -> dict:
+    """Extract chart image URLs from analytics response.
+
+    Returns dict mapping metric key to URL/data.
+    Example: {"conversion_rate": "https://static.intelligems.io/graphs/...png"}
+    """
+    charts = {}
+    for graph in analytics_response.get("graphs", []):
+        key = graph.get("key")
+        # Prefer URL (png mode), fall back to base64 data
+        charts[key] = graph.get("url") or graph.get("data")
+    return charts
+
+
+def fetch_analytics_with_charts(api, experience_id: str, metrics: list = None) -> dict:
+    """Fetch analytics with chart images for specified metrics.
+
+    Args:
+        api: IntelligemsAPI instance
+        experience_id: Experience UUID
+        metrics: List of metric keys (default: core 4)
+
+    Returns: Full analytics response including graphs array
+    """
+    if metrics is None:
+        metrics = ["conversion_rate", "net_revenue_per_visitor",
+                    "net_revenue_per_order", "add_to_cart_rate"]
+
+    url = f"{API_BASE}/analytics/resource/{experience_id}"
+    params = {
+        "view": "overview",
+        "graphs": ",".join(metrics),
+        "graphOutput": "png"
+    }
+    response = requests.get(url, headers=api.headers, params=params)
+    response.raise_for_status()
+    return response.json()
+```
+
+**Slack integration example:**
+
+```python
+# Chart URLs are public — Slack can fetch them directly
+charts = get_chart_images(analytics)
+blocks = []
+for key, url in charts.items():
+    blocks.append({
+        "type": "image",
+        "image_url": url,
+        "alt_text": f"{key} chart"
+    })
+# Add to Slack message payload
+payload = {"blocks": blocks}
+```
+
+---
+
 ### Audience View Response Structure
 
 When using `view=audience` with an `audience` parameter, the response structure changes:

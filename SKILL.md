@@ -98,6 +98,14 @@ intelligems-access-token: your_api_key_here
 
 **Confidence:** `p2bb` = Probability to Beat Baseline (not `confidence`)
 
+**Chart Images (opt-in):**
+- Add `graphs=conversion_rate,net_revenue_per_visitor` to analytics request
+- Add `graphOutput=png` (S3 URL, default) or `graphOutput=base64` (inline)
+- Response includes `graphs` array with `id`, `key`, `url`/`data`, `type`, `title`
+- URLs are **public** (no auth needed) — can embed directly in Slack `image` blocks
+- 640x640 PNG, ~40KB, shows bars + uplift % + CI + estimated monthly impact
+- 27 metrics supported, `view=overview` only
+
 **Health Check Thresholds (Intelligems Philosophy):**
 - MIN_RUNTIME_DAYS: 10
 - MIN_VISITORS: 100
