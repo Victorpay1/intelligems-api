@@ -65,7 +65,7 @@ After reading the documentation, confirm you're ready:
 > "Got it. I've loaded the Intelligems External API context:
 > - Base URL: `https://api.intelligems.io/v25-10-beta`
 > - Auth: `intelligems-access-token` header
-> - Key endpoints: experiences-list, experiences/{id}, analytics/resource/{id}
+> - Key endpoints: experiences-list, experiences/{id}, analytics/resource/{id}, analytics/sitewide
 >
 > What are we building?"
 
@@ -85,7 +85,8 @@ intelligems-access-token: your_api_key_here
 |----------|---------|
 | GET /experiences-list | List all tests/experiences |
 | GET /experiences/{id} | Get full test details |
-| GET /analytics/resource/{id} | Get analytics data |
+| GET /analytics/resource/{id} | Get analytics data (per experiment) |
+| POST /analytics/sitewide | Store-level analytics (RPV, revenue, visitors) — ISO 8601 dates |
 
 **Key Metrics (Intelligems Priority):**
 - `net_revenue_per_visitor` - Revenue/visitor (**north star**)

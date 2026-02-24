@@ -20,6 +20,7 @@ The Intelligems External API provides programmatic access to your Intelligems ex
 **Access Analytics Data**
 - Pull performance metrics for any test or experience
 - View results by audience segments (device type, visitor type, traffic source, geography, etc.)
+- Get store-wide metrics (RPV, revenue, visitors) for any date range — no experiment ID needed
 - Export analytics data for custom reporting and analysis
 
 **Automate Workflows**
@@ -479,6 +480,93 @@ for metric in metrics:
 
 ---
 
+### POST /v25-10-beta/analytics/sitewide
+
+Retrieve **store-level** analytics for any date range. Unlike the resource endpoint, this doesn't require an experiment ID — it returns aggregate metrics for the entire store.
+
+**Method:** POST (not GET like other endpoints)
+
+**Request Body (JSON):**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| start | string | Yes | Start date in **ISO 8601** format (e.g., `"2026-02-01T00:00:00.000Z"`) |
+| end | string | Yes | End date in **ISO 8601** format (e.g., `"2026-02-24T23:59:59.999Z"`) |
+
+**IMPORTANT: Date Format Difference**
+
+This endpoint uses **ISO 8601 strings** — NOT Unix timestamps. This is different from `analytics/resource` which requires 10-digit Unix seconds.
+
+```python
+# Sitewide endpoint — ISO 8601 strings
+start = "2026-02-01T00:00:00.000Z"
+end = "2026-02-24T23:59:59.999Z"
+
+# Resource endpoint — Unix timestamps (10-digit integers)
+start = 1737331200  # Different format!
+```
+
+**Response:**
+
+```json
+{
+  "currency": "USD",
+  "revenuePerVisitor": 3.42,
+  "netRevenue": 125430.50,
+  "visitors": 36673
+}
+```
+
+**Response Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| currency | string | Store currency code (e.g., "USD", "EUR", "GBP") |
+| revenuePerVisitor | number | Revenue per visitor for the date range |
+| netRevenue | number | Total net revenue for the date range |
+| visitors | integer | Total unique visitors for the date range |
+
+**Python Example:**
+
+```python
+def get_sitewide_analytics(self, start: str, end: str) -> Dict:
+    """Fetch store-level analytics for a date range.
+
+    Args:
+        start: ISO 8601 date string (e.g., "2026-02-01T00:00:00.000Z")
+        end: ISO 8601 date string (e.g., "2026-02-24T23:59:59.999Z")
+
+    Returns: Dict with currency, revenuePerVisitor, netRevenue, visitors
+    """
+    url = f"{API_BASE}/analytics/sitewide"
+    body = {"start": start, "end": end}
+    self._throttle()
+    response = requests.post(url, headers=self.headers, json=body)
+    response.raise_for_status()
+    return response.json()
+
+# Usage
+api = IntelligemsAPI("your_api_key_here")
+
+# Last 30 days
+data = api.get_sitewide_analytics(
+    start="2026-01-25T00:00:00.000Z",
+    end="2026-02-24T23:59:59.999Z"
+)
+print(f"RPV: ${data['revenuePerVisitor']:.2f}")
+print(f"Revenue: ${data['netRevenue']:,.2f}")
+print(f"Visitors: {data['visitors']:,}")
+```
+
+**Use Cases:**
+
+- **Baseline RPV:** Get store-wide RPV to compare against experiment variations
+- **Morning Brief:** Pull yesterday's store metrics for a daily Slack digest
+- **Trend Comparison:** Compare week-over-week or month-over-month store performance
+- **Pre-Test Snapshot:** Capture store metrics before launching a new experiment
+
+**Rate Limiting:** Same 10 req/60s window as all other endpoints. Use the same throttle and retry logic.
+
+---
+
 ## Key Data Structures
 
 ### Experience Types
@@ -570,6 +658,17 @@ class IntelligemsAPI:
         start = datetime.fromtimestamp(started_ts / 1000)
         delta = datetime.now() - start
         return f"{delta.days} days"
+
+    def get_sitewide_analytics(self, start: str, end: str) -> Dict:
+        """Fetch store-level analytics (RPV, revenue, visitors).
+
+        Uses ISO 8601 dates (NOT Unix timestamps like analytics/resource).
+        """
+        url = f"{API_BASE}/analytics/sitewide"
+        body = {"start": start, "end": end}
+        response = requests.post(url, headers=self.headers, json=body)
+        response.raise_for_status()
+        return response.json()
 
 # Usage
 api = IntelligemsAPI("your_api_key_here")
