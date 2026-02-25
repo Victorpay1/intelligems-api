@@ -86,7 +86,7 @@ intelligems-access-token: your_api_key_here
 | GET /experiences-list | List all tests/experiences |
 | GET /experiences/{id} | Get full test details |
 | GET /analytics/resource/{id} | Get analytics data (per experiment) |
-| POST /analytics/sitewide | Store-level analytics (RPV, revenue, visitors) — ISO 8601 dates |
+| POST /analytics/sitewide | Store-level analytics (RPV, revenue, visitors) — ISO 8601 dates, body: `{ start, end }` (NOT `startDate`/`endDate`) |
 
 **Key Metrics (Intelligems Priority):**
 - `net_revenue_per_visitor` - Revenue/visitor (**north star**)

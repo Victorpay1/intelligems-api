@@ -505,6 +505,8 @@ end = "2026-02-24T23:59:59.999Z"
 start = 1737331200  # Different format!
 ```
 
+> **Common Pitfall:** The body fields are `start` and `end` — NOT `startDate` / `endDate`. Using the wrong field names returns a **500 error** with no helpful message. This has caused production bugs (see Report Builder S7 fix).
+
 **Response:**
 
 ```json
@@ -554,6 +556,30 @@ data = api.get_sitewide_analytics(
 print(f"RPV: ${data['revenuePerVisitor']:.2f}")
 print(f"Revenue: ${data['netRevenue']:,.2f}")
 print(f"Visitors: {data['visitors']:,}")
+```
+
+**TypeScript Example:**
+
+```typescript
+async getSitewideAnalytics(start: string, end: string): Promise<SitewideData> {
+  const response = await fetch(`${BASE_URL}/analytics/sitewide`, {
+    method: 'POST',
+    headers: {
+      'intelligems-access-token': this.apiKey,
+      'Content-Type': 'application/json',
+    },
+    // IMPORTANT: field names are "start" and "end", NOT "startDate"/"endDate"
+    body: JSON.stringify({ start, end }),
+  });
+  return response.json();
+}
+
+// Usage — last 30 days
+const data = await api.getSitewideAnalytics(
+  '2026-01-25T00:00:00.000Z',
+  '2026-02-24T23:59:59.999Z'
+);
+console.log(`RPV: $${data.revenuePerVisitor.toFixed(2)}`);
 ```
 
 **Use Cases:**
